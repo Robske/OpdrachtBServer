@@ -1,3 +1,5 @@
+bool debug = true;
+
 // Include files.
 #include <dht.h>                  // humidity / temperature sensor
 #include <SPI.h>                  // Ethernet shield uses SPI-interface
@@ -12,18 +14,28 @@ bool connected = false;                  // Used for retrying DHCP
 #define ledpin 8                         // Led shows if client connected
 
 dht DHT;
-#define DHT11_PIN 7
+#define DHT11pin 7    // Pin Humidity and Temperature Sensor
+#define LDRpin A0     // Pin Light Sensor
+#define FANSpin 2     // Pin Fans
+bool fansOn = false;
+#define PUMPpin 3     // Pin Waterpump
+bool pumpOn = false;
 
 int temp, humidity;                      // Variables for dht sensor 
 int airTime = 3600;                      // each airTime in seconds put fans on for 1 min
 
+int timer = 0;        // Cares for counts when fans need to be turned on
+
 void setup()
 {  
    Serial.begin(9600);
-   //while (!Serial) { ; }               // Wait for serial port to connect. Needed for Leonardo only.
    
    pinMode(ledpin, OUTPUT);
    digitalWrite(ledpin, LOW);
+   pinMode(FANSpin, OUTPUT);
+   digitalWrite(FANSpin, LOW);
+   pinMode(PUMPpin, OUTPUT);
+   digitalWrite(PUMPpin, LOW);
   
    Serial.println("Server started, trying to get IP...");
 
@@ -74,8 +86,9 @@ void loop()
 {
    // Listen for incomming connection (app)
    EthernetClient ethernetClient = server.available();
-   
+
    if (!ethernetClient) {
+      timer++;
       DoActionsNeeded();
       delay(1000);
       return; // wait for connection
@@ -86,9 +99,12 @@ void loop()
    // Do what needs to be done while the socket is connected.
    while (ethernetClient.connected())
    {
+      timer++;
       // Check if actions needed
       DoActionsNeeded();
-      
+      delay(1000);
+
+      Serial.println(timer);
       //sensorValue = readSensor(0, 100);         // update sensor value
    
       // Execute when byte is received.
@@ -98,6 +114,7 @@ void loop()
          char inByte = ethernetClient.read();   // Get byte from the client.
          executeCommand(inByte);                // Wait for command to execute
          inByte = NULL;                         // Reset the read byte.
+         Serial.println(timer);
       } 
    }
    digitalWrite(ledpin, LOW);
@@ -133,13 +150,12 @@ void executeCommand(char cmd)
 // Calls multiple functions and acts on values
 void DoActionsNeeded() {
   temp = getTemp();
-  //if (
 }
 
 // Get temperature
 int getTemp()
 {
-  int chk = DHT.read11(DHT11_PIN);
+  int chk = DHT.read11(DHT11pin);
   
    //  Get value from sensor
    int a = DHT.temperature;
@@ -149,7 +165,44 @@ int getTemp()
    a = b.substring(0, b.indexOf(',')).toInt();
    Serial.print(a);
    return a;
-   //return map(analogRead(pn), 0, 1023, 0, mx-1);    
+   //    
+}
+
+int getHumidity() {
+   int chk = DHT.read11(DHT11pin);
+  
+   //  Get value from sensor
+   int a = DHT.humidity;
+
+   Serial.print(a);
+   String b = String(a);
+   a = b.substring(0, b.indexOf(',')).toInt();
+   Serial.print(a);
+   return a;
+}
+
+int getLight(int maxval = 100) {  
+  return map(analogRead(LDRpin), 0, 1023, 0, maxval);
+}
+
+void changeFanState(bool onn) {
+  if (fansOn) {
+    digitalWrite(FANSpin, LOW);
+    fansOn = false;
+  } else {
+    digitalWrite(FANSpin, HIGH);
+    fansOn = true;
+  }
+}
+
+void changePumpState(bool onn) {
+  if (pumpOn) {
+    digitalWrite(PUMPpin, LOW);
+    pumpOn = false;
+  } else {
+    digitalWrite(PUMPpin, HIGH);
+    pumpOn = true;
+  }
 }
 
 // Convert int <val> char buffer with length <len>
