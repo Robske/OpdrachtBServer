@@ -8,10 +8,10 @@ bool debug = true;
 // Set Ethernet Shield MAC address  (check yours)
 byte mac[] = { 0x40, 0x6c, 0x8f, 0x36, 0x84, 0x8a }; // Ethernet adapter shield
 int ethPort = 3300;                                  // Take a free port (check your router)
-EthernetServer server(ethPort);              // EthernetServer instance (listening on port <ethPort>).
-bool connected = false;                  // Used for retrying DHCP
+EthernetServer server(ethPort);                      // EthernetServer instance (listening on port <ethPort>).
+bool connected = false;                              // Used for retrying DHCP
 
-#define ledpin 8                         // Led shows if client connected
+#define ledpin 8      // Led shows if client connected
 
 dht DHT;
 #define DHT11pin 7    // Pin Humidity and Temperature Sensor
@@ -20,11 +20,16 @@ dht DHT;
 bool fansOn = false;
 #define PUMPpin 3     // Pin Waterpump
 bool pumpOn = false;
+bool lightOn = false;
 
-int temp, humidity;                      // Variables for dht sensor 
-int airTime = 3600;                      // each airTime in seconds put fans on for 1 min
+int temp, airhumidity, soilhumidity, light = 0;      // Variables for dht sensor 
+int airTime = 3600;                                  // each airTime in seconds put fans on for 1 min
 
-int timer = 0;        // Cares for counts when fans need to be turned on
+unsigned long fansPreviousMillis = 0;                 // Cares for a count
+const long fansInterval = 10000;                      // interval how long fans must be on (milliseconds)
+
+unsigned long fansOnPreviousInterval = 0;             // Cares for a count
+const long fansOnEach = 60000;                        // interval at which to turn fans on (milliseconds)
 
 void setup()
 {  
@@ -88,9 +93,7 @@ void loop()
    EthernetClient ethernetClient = server.available();
 
    if (!ethernetClient) {
-      timer++;
       DoActionsNeeded();
-      delay(1000);
       return; // wait for connection
    }
 
@@ -99,13 +102,8 @@ void loop()
    // Do what needs to be done while the socket is connected.
    while (ethernetClient.connected())
    {
-      timer++;
       // Check if actions needed
       DoActionsNeeded();
-      delay(1000);
-
-      Serial.println(timer);
-      //sensorValue = readSensor(0, 100);         // update sensor value
    
       // Execute when byte is received.
       while (ethernetClient.available())
@@ -114,7 +112,6 @@ void loop()
          char inByte = ethernetClient.read();   // Get byte from the client.
          executeCommand(inByte);                // Wait for command to execute
          inByte = NULL;                         // Reset the read byte.
-         Serial.println(timer);
       } 
    }
    digitalWrite(ledpin, LOW);
@@ -148,8 +145,39 @@ void executeCommand(char cmd)
 }
 
 // Calls multiple functions and acts on values
-void DoActionsNeeded() {
+void DoActionsNeeded() {  
   temp = getTemp();
+  airhumidity = getAirHumidity();
+  soilhumidity = getSoilHumidity();
+  light = getLight(100);
+
+  if (soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
+    digitalWrite(PUMPpin, HIGH);
+    pumpOn = true;
+  } else if (pumpOn && soilhumidity >= 50) {
+    digitalWrite(PUMPpin, LOW);
+    pumpOn = false;
+  }
+
+  unsigned long currentMillis = millis();
+  if (!fansOn && currentMillis - fansOnPreviousInterval >= fansOnEach) {
+    fansOnPreviousInterval = currentMillis;
+    fansPreviousMillis = currentMillis;
+    changeFanState(true);
+  } else if (fansOn && currentMillis - fansPreviousMillis >= fansInterval) {
+    fansOnPreviousInterval = currentMillis;
+    fansPreviousMillis = currentMillis;
+    changeFanState(false);
+  }
+  
+  if (light < 30 && !light) { // Check if light is needed
+    // KaKu Send on
+    lightOn = true;
+  } else if (light > 50 && light) {
+      //KaKu Send off
+      lightOn = false;
+  }
+    
 }
 
 // Get temperature
@@ -165,10 +193,9 @@ int getTemp()
    a = b.substring(0, b.indexOf(',')).toInt();
    Serial.print(a);
    return a;
-   //    
 }
 
-int getHumidity() {
+int getAirHumidity() {
    int chk = DHT.read11(DHT11pin);
   
    //  Get value from sensor
@@ -181,12 +208,17 @@ int getHumidity() {
    return a;
 }
 
-int getLight(int maxval = 100) {  
+int getSoilHumidity() { //FUNCTION STILL HAS TO BE MADE
+
+  return 50;
+}
+
+int getLight(int maxval) {  
   return map(analogRead(LDRpin), 0, 1023, 0, maxval);
 }
 
-void changeFanState(bool onn) {
-  if (fansOn) {
+void changeFanState(bool on) {
+  if (!on) {
     digitalWrite(FANSpin, LOW);
     fansOn = false;
   } else {
@@ -195,7 +227,7 @@ void changeFanState(bool onn) {
   }
 }
 
-void changePumpState(bool onn) {
+void changePumpState(bool on) {
   if (pumpOn) {
     digitalWrite(PUMPpin, LOW);
     pumpOn = false;
