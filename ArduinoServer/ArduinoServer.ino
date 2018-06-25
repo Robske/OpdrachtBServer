@@ -16,6 +16,7 @@ bool connected = false;                              // Used for retrying DHCP
 dht DHT;
 #define DHT11pin 7    // Pin Humidity and Temperature Sensor
 #define LDRpin A0     // Pin Light Sensor
+#define SOILpin A1     // Pin Soil Humidity Sensor
 #define FANSpin 2     // Pin Fans
 bool fansOn = false;
 #define PUMPpin 3     // Pin Waterpump
@@ -130,11 +131,11 @@ void executeCommand(char cmd)
          
          switch (cmd) {
           // Case a is example of value (int) to buf
-         /*case 'a': // Report sensor value to the app  
+         case 'a': // Report sensor value to the app  
             intToCharBuf(sensorValue, buf, 4);                // convert to charbuffer 
             server.write(buf, 4);                             // response is always 4 chars (\n included)
             Serial.print("Sensor: "); Serial.println(buf);
-            break;*/
+            break;
          case 's':
             //if (doorOpen) { server.write("Open"); Serial.println("Open"); }
             //else { server.write("Clos"); Serial.println("Closed"); }
@@ -148,7 +149,7 @@ void executeCommand(char cmd)
 void DoActionsNeeded() {  
   temp = getTemp();
   airhumidity = getAirHumidity();
-  soilhumidity = getSoilHumidity();
+  soilhumidity = getSoilHumidity(100);
   light = getLight(100);
 
   if (soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
@@ -208,9 +209,8 @@ int getAirHumidity() {
    return a;
 }
 
-int getSoilHumidity() { //FUNCTION STILL HAS TO BE MADE
-
-  return 50;
+int getSoilHumidity(int maxval) { //FUNCTION STILL HAS TO BE MADE
+  return map(analogRead(SOILpin), 0, 1023, 0, maxval);
 }
 
 int getLight(int maxval) {  
