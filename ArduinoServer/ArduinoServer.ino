@@ -14,9 +14,9 @@ bool connected = false;                              // Used for retrying DHCP
 #define ledpin 8      // Led shows if client connected
 
 dht DHT;
-#define DHT11pin 7    // Pin Humidity and Temperature Sensor
+#define DHT11pin 7    // Pin Air Humidity and Temperature Sensor
 #define LDRpin A0     // Pin Light Sensor
-#define SOILpin A1     // Pin Soil Humidity Sensor
+#define SOILpin A1    // Pin Soil Humidity Sensor
 #define FANSpin 2     // Pin Fans
 bool fansOn = false;
 #define PUMPpin 3     // Pin Waterpump
@@ -26,11 +26,14 @@ bool lightOn = false;
 int temp, airhumidity, soilhumidity, light = 0;      // Variables for dht sensor 
 int airTime = 3600;                                  // each airTime in seconds put fans on for 1 min
 
+unsigned long updateValuesPreviousMillis = 0;                 // Cares for a count
+const long updateValuesInterval = 2500;                      // interval how long fans must be on (milliseconds)
+
 unsigned long fansPreviousMillis = 0;                 // Cares for a count
 const long fansInterval = 10000;                      // interval how long fans must be on (milliseconds)
 
 unsigned long fansOnPreviousInterval = 0;             // Cares for a count
-const long fansOnEach = 60000;                        // interval at which to turn fans on (milliseconds)
+const long fansOnEach = 30000;                        // interval at which to turn fans on (milliseconds)
 
 void setup()
 {  
@@ -100,6 +103,7 @@ void loop()
 
    Serial.println("Application connected");
    digitalWrite(ledpin, HIGH);
+   
    // Do what needs to be done while the socket is connected.
    while (ethernetClient.connected())
    {
@@ -115,52 +119,40 @@ void loop()
          inByte = NULL;                         // Reset the read byte.
       } 
    }
+   
    digitalWrite(ledpin, LOW);
    Serial.println("Application disonnected");
 }
 
-// Implementation of (simple) protocol between app and Arduino
-// Request (from app) is single char ('a', 's', 't', 'i' etc.)
-// Response (to app) is 4 chars  (not all commands demand a response)
-void executeCommand(char cmd)
-{     
-         char buf[4] = {'\0', '\0', '\0', '\0'};
-
-         // Command protocol
-         Serial.print("App send '"); Serial.print(cmd); Serial.print("] -> ");
-         
-         switch (cmd) {
-          // Case a is example of value (int) to buf
-         case 'a': // Report sensor value to the app  
-            intToCharBuf(sensorValue, buf, 4);                // convert to charbuffer 
-            server.write(buf, 4);                             // response is always 4 chars (\n included)
-            Serial.print("Sensor: "); Serial.println(buf);
-            break;
-         case 's':
-            //if (doorOpen) { server.write("Open"); Serial.println("Open"); }
-            //else { server.write("Clos"); Serial.println("Closed"); }
-            break;
-         default:
-            break;
-         }
-}
-
 // Calls multiple functions and acts on values
 void DoActionsNeeded() {  
-  temp = getTemp();
-  airhumidity = getAirHumidity();
+  unsigned long currentMillis = millis();
+
+  if (currentMillis - updateValuesPreviousMillis >= updateValuesInterval) {
+    updateValuesPreviousMillis = currentMillis;
+    updateTempAndHumidity();
+  }
+
   soilhumidity = getSoilHumidity(100);
   light = getLight(100);
 
+  Serial.println("New Line");
+  Serial.println(light);
+  Serial.println(airhumidity);
+  Serial.println(soilhumidity);
+  Serial.println(temp);
   if (soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
     digitalWrite(PUMPpin, HIGH);
     pumpOn = true;
+    Serial.println("Pump is on");
+    Serial.println(soilhumidity);
   } else if (pumpOn && soilhumidity >= 50) {
     digitalWrite(PUMPpin, LOW);
     pumpOn = false;
+    Serial.println("Pump is off");
+    Serial.println(soilhumidity);
   }
 
-  unsigned long currentMillis = millis();
   if (!fansOn && currentMillis - fansOnPreviousInterval >= fansOnEach) {
     fansOnPreviousInterval = currentMillis;
     fansPreviousMillis = currentMillis;
@@ -178,35 +170,47 @@ void DoActionsNeeded() {
       //KaKu Send off
       lightOn = false;
   }
-    
+}
+
+// Implementation of (simple) protocol between app and Arduino
+// Request (from app) is single char ('a', 's', 't', 'i' etc.)
+// Response (to app) is 4 chars  (not all commands demand a response)
+void executeCommand(char cmd)
+{     
+  char buf[4] = {'\0', '\0', '\0', '\0'};
+  
+  // Command protocol
+  Serial.print("App send ["); Serial.print(cmd); Serial.println("] -> ");
+  
+  switch (cmd) {
+  // Case a is example of value (int) to buf
+  case 'a': // Report sensor value to the app  
+    intToCharBuf(getLight(100), buf, 4);                // convert to charbuffer 
+    server.write(buf, 4);                             // response is always 4 chars (\n included)
+    Serial.print("Sensor: "); Serial.println(buf);
+    break;
+  case 's':
+    //if (doorOpen) { server.write("Open"); Serial.println("Open"); }
+    //else { server.write("Clos"); Serial.println("Closed"); }
+    break;
+  default:
+    break;
+       }
 }
 
 // Get temperature
-int getTemp()
+int updateTempAndHumidity()
 {
   int chk = DHT.read11(DHT11pin);
   
    //  Get value from sensor
    int a = DHT.temperature;
+   String astring = String(a);
+   temp = astring.substring(0, astring.indexOf(',')).toInt();
 
-   Serial.print(a);
-   String b = String(a);
-   a = b.substring(0, b.indexOf(',')).toInt();
-   Serial.print(a);
-   return a;
-}
-
-int getAirHumidity() {
-   int chk = DHT.read11(DHT11pin);
-  
-   //  Get value from sensor
-   int a = DHT.humidity;
-
-   Serial.print(a);
-   String b = String(a);
-   a = b.substring(0, b.indexOf(',')).toInt();
-   Serial.print(a);
-   return a;
+   int b = DHT.humidity;
+   String bstring = String(b);
+   airhumidity = bstring.substring(0, bstring.indexOf(',')).toInt();
 }
 
 int getSoilHumidity(int maxval) { //FUNCTION STILL HAS TO BE MADE
