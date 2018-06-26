@@ -18,10 +18,14 @@ dht DHT;
 #define LDRpin A0     // Pin Light Sensor
 #define SOILpin A1    // Pin Soil Humidity Sensor
 #define FANSpin 2     // Pin Fans
-bool fansOn = false;
 #define PUMPpin 3     // Pin Waterpump
+bool fansOn = false;
 bool pumpOn = false;
 bool lightOn = false;
+
+bool pumpManualSet = false;   //If true the pump doesn't rely on soilhumidity, instead just listens to the app
+bool fanManualSet = false;    //If true the fans don't rely on timer, instead just listens to the app
+bool lightManualSet = false;    //If true the light don't rely on lightmeter, instead just listens to the app
 
 int temp, airhumidity, soilhumidity, light = 0;      // Variables for dht sensor 
 int airTime = 3600;                                  // each airTime in seconds put fans on for 1 min
@@ -141,34 +145,34 @@ void DoActionsNeeded() {
   Serial.println(airhumidity);
   Serial.println(soilhumidity);
   Serial.println(temp);
-  if (soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
+  Serial.println("");
+  
+  if (!pumpManualSet && soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
     digitalWrite(PUMPpin, HIGH);
     pumpOn = true;
     Serial.println("Pump is on");
     Serial.println(soilhumidity);
-  } else if (pumpOn && soilhumidity >= 50) {
+  } else if (!pumpManualSet && pumpOn && soilhumidity >= 50) {
     digitalWrite(PUMPpin, LOW);
     pumpOn = false;
     Serial.println("Pump is off");
     Serial.println(soilhumidity);
   }
 
-  if (!fansOn && currentMillis - fansOnPreviousInterval >= fansOnEach) {
+  if (!fanManualSet && !fansOn && currentMillis - fansOnPreviousInterval >= fansOnEach) {
     fansOnPreviousInterval = currentMillis;
     fansPreviousMillis = currentMillis;
     changeFanState(true);
-  } else if (fansOn && currentMillis - fansPreviousMillis >= fansInterval) {
+  } else if (!fanManualSet && fansOn && currentMillis - fansPreviousMillis >= fansInterval) {
     fansOnPreviousInterval = currentMillis;
     fansPreviousMillis = currentMillis;
     changeFanState(false);
   }
   
-  if (light < 30 && !light) { // Check if light is needed
-    // KaKu Send on
-    lightOn = true;
-  } else if (light > 50 && light) {
-      //KaKu Send off
-      lightOn = false;
+  if (!lightManualSet && light < 30 && !light) { // Check if light is needed
+    changeLightState(true);
+  } else if (!lightManualSet && light > 50 && light) {
+      changeLightState(false);
   }
 }
 
@@ -183,16 +187,38 @@ void executeCommand(char cmd)
   Serial.print("App send ["); Serial.print(cmd); Serial.println("] -> ");
   
   switch (cmd) {
-  // Case a is example of value (int) to buf
-  case 'a': // Report sensor value to the app  
-    intToCharBuf(getLight(100), buf, 4);                // convert to charbuffer 
-    server.write(buf, 4);                             // response is always 4 chars (\n included)
-    Serial.print("Sensor: "); Serial.println(buf);
-    break;
-  case 's':
-    //if (doorOpen) { server.write("Open"); Serial.println("Open"); }
-    //else { server.write("Clos"); Serial.println("Closed"); }
-    break;
+    case 'h':
+      intToCharBuf(soilhumidity, buf, 4);
+      server.write(buf, 4);
+      Serial.print("Send soil humidity: "); Serial.println(buf);
+      break;
+    case 'a':
+      intToCharBuf(airhumidity, buf, 4);
+      server.write(buf, 4);
+      Serial.print("Send air humidity: "); Serial.println(buf);
+      break;
+    case 't':
+      intToCharBuf(temp, buf, 4);
+      server.write(buf, 4);
+      Serial.print("Send temp: "); Serial.println(buf);
+      break;
+    case 'R':
+      changePumpState(true);
+      pumpManualSet = true;
+      break;
+    case 'r':
+      changePumpState(false);
+      pumpManualSet = false;
+      break;
+    case 'W':
+      changeFanState(true);
+      fanManualSet = true;
+      break;
+    case 'w':
+      changeFanState(false);
+      fanManualSet = false;
+      fansPreviousMillis = millis();
+      break;
   default:
     break;
        }
@@ -221,23 +247,33 @@ int getLight(int maxval) {
   return map(analogRead(LDRpin), 0, 1023, 0, maxval);
 }
 
-void changeFanState(bool on) {
-  if (!on) {
-    digitalWrite(FANSpin, LOW);
-    fansOn = false;
+void changeLightState(bool on) {
+  if (on) {
+    //KaKu AAN
+    lightOn = true;
   } else {
+    //KaKu UIT
+    lightOn = false;
+  }
+}
+
+void changeFanState(bool on) {
+  if (on) {
     digitalWrite(FANSpin, HIGH);
     fansOn = true;
+  } else {
+    digitalWrite(FANSpin, LOW);
+    fansOn = false;
   }
 }
 
 void changePumpState(bool on) {
-  if (pumpOn) {
-    digitalWrite(PUMPpin, LOW);
-    pumpOn = false;
-  } else {
+  if (on) {
     digitalWrite(PUMPpin, HIGH);
     pumpOn = true;
+  } else {
+    digitalWrite(PUMPpin, LOW);
+    pumpOn = false;
   }
 }
 
@@ -277,5 +313,33 @@ int getIPComputerNumber(IPAddress address)
 int getIPComputerNumberOffset(IPAddress address, int offset)
 {
     return getIPComputerNumber(address) - offset;
+}
+
+
+
+
+
+
+#include <NewRemoteTransmitter.h>
+
+NewRemoteTransmitter transmitter(4255908178, 2, 260, 3);
+
+//bool light1, light2, light3 = false;
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(9600);
+}
+
+void loop() {
+  // put your main code here, to run repeatedly:
+  for (int i = 1; i <= 3; i++) {
+    Serial.print("Unit "); Serial.print(i); Serial.println(" is nu aan");
+    transmitter.sendUnit(i, true);
+    delay(1000);
+    
+    // Set unit off
+    transmitter.sendUnit(i, false);
+  }
 }
 
