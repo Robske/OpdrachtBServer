@@ -17,8 +17,9 @@ dht DHT;
 #define DHT11pin 7    // Pin Air Humidity and Temperature Sensor
 #define LDRpin A0     // Pin Light Sensor
 #define SOILpin A1    // Pin Soil Humidity Sensor
-#define FANSpin 2     // Pin Fans
-#define PUMPpin 3     // Pin Waterpump
+#define FAN1pin 2     // Pin Fans
+#define FAN2pin 3     // Pin Fans
+#define PUMPpin 5    // Pin Waterpump
 bool fansOn = false;
 bool pumpOn = false;
 bool lightOn = false;
@@ -31,7 +32,7 @@ int temp, airhumidity, soilhumidity, light = 0;      // Variables for dht sensor
 int airTime = 3600;                                  // each airTime in seconds put fans on for 1 min
 
 unsigned long updateValuesPreviousMillis = 0;                 // Cares for a count
-const long updateValuesInterval = 2500;                      // interval how long fans must be on (milliseconds)
+const long updateValuesInterval = 5000;                      // interval how long fans must be on (milliseconds)
 
 unsigned long fansPreviousMillis = 0;                 // Cares for a count
 const long fansInterval = 10000;                      // interval how long fans must be on (milliseconds)
@@ -39,14 +40,19 @@ const long fansInterval = 10000;                      // interval how long fans 
 unsigned long fansOnPreviousInterval = 0;             // Cares for a count
 const long fansOnEach = 30000;                        // interval at which to turn fans on (milliseconds)
 
+unsigned long pumpManualSetPreviousMillis = 0;                 // Cares for a count
+const long pumpManualSetInterval = 30000;                      // interval how long fans must be on (milliseconds)
+
 void setup()
 {  
    Serial.begin(9600);
    
    pinMode(ledpin, OUTPUT);
    digitalWrite(ledpin, LOW);
-   pinMode(FANSpin, OUTPUT);
-   digitalWrite(FANSpin, LOW);
+   pinMode(FAN1pin, OUTPUT);
+   digitalWrite(FAN1pin, LOW);
+   pinMode(FAN2pin, OUTPUT);
+   digitalWrite(FAN2pin, LOW);
    pinMode(PUMPpin, OUTPUT);
    digitalWrite(PUMPpin, LOW);
   
@@ -133,30 +139,31 @@ void DoActionsNeeded() {
   unsigned long currentMillis = millis();
 
   if (currentMillis - updateValuesPreviousMillis >= updateValuesInterval) {
+    Serial.println("Values updating");
     updateValuesPreviousMillis = currentMillis;
     updateTempAndHumidity();
+    soilhumidity = getSoilHumidity(100);
+    light = getLight(100);
+
+    Serial.println("New Values");
+    Serial.println(light);
+    Serial.println(airhumidity);
+    Serial.println(soilhumidity);
+    Serial.println(temp);
   }
+  
+  /*if (currentMillis - pumpManualSetPreviousMillis >= pumpManualSetInterval) {
+    pumpManualSetPreviousMillis  = currentMillis;
+    changePumpState(false);
+    pumpManualSet = false;
+  }*/
 
-  soilhumidity = getSoilHumidity(100);
-  light = getLight(100);
-
-  Serial.println("New Line");
-  Serial.println(light);
-  Serial.println(airhumidity);
-  Serial.println(soilhumidity);
-  Serial.println(temp);
-  Serial.println("");
+  
   
   if (!pumpManualSet && soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
-    digitalWrite(PUMPpin, HIGH);
-    pumpOn = true;
-    Serial.println("Pump is on");
-    Serial.println(soilhumidity);
+    changePumpState(true);
   } else if (!pumpManualSet && pumpOn && soilhumidity >= 50) {
-    digitalWrite(PUMPpin, LOW);
-    pumpOn = false;
-    Serial.println("Pump is off");
-    Serial.println(soilhumidity);
+    changePumpState(false);
   }
 
   if (!fanManualSet && !fansOn && currentMillis - fansOnPreviousInterval >= fansOnEach) {
@@ -172,7 +179,7 @@ void DoActionsNeeded() {
   if (!lightManualSet && light < 30 && !light) { // Check if light is needed
     changeLightState(true);
   } else if (!lightManualSet && light > 50 && light) {
-      changeLightState(false);
+    changeLightState(false);
   }
 }
 
@@ -202,13 +209,18 @@ void executeCommand(char cmd)
       server.write(buf, 4);
       Serial.print("Send temp: "); Serial.println(buf);
       break;
+    case 'l':
+      intToCharBuf(light, buf, 4);
+      server.write(buf, 4);
+      Serial.print("Send light: "); Serial.println(buf);
+      break;
     case 'R':
-      changePumpState(true);
       pumpManualSet = true;
+      changePumpState(true);
       break;
     case 'r':
-      changePumpState(false);
       pumpManualSet = false;
+      changePumpState(false);
       break;
     case 'W':
       changeFanState(true);
@@ -219,24 +231,17 @@ void executeCommand(char cmd)
       fanManualSet = false;
       fansPreviousMillis = millis();
       break;
-  default:
-    break;
-       }
+    default:
+      break;
+    }
 }
 
 // Get temperature
 int updateTempAndHumidity()
 {
   int chk = DHT.read11(DHT11pin);
-  
-   //  Get value from sensor
-   int a = DHT.temperature;
-   String astring = String(a);
-   temp = astring.substring(0, astring.indexOf(',')).toInt();
-
-   int b = DHT.humidity;
-   String bstring = String(b);
-   airhumidity = bstring.substring(0, bstring.indexOf(',')).toInt();
+  temp = DHT.temperature;
+  soilhumidity = DHT.humidity;
 }
 
 int getSoilHumidity(int maxval) { //FUNCTION STILL HAS TO BE MADE
@@ -259,10 +264,12 @@ void changeLightState(bool on) {
 
 void changeFanState(bool on) {
   if (on) {
-    digitalWrite(FANSpin, HIGH);
+    digitalWrite(FAN1pin, HIGH);
+    digitalWrite(FAN2pin, HIGH);
     fansOn = true;
   } else {
-    digitalWrite(FANSpin, LOW);
+    digitalWrite(FAN1pin, LOW);
+    digitalWrite(FAN2pin, LOW);
     fansOn = false;
   }
 }
@@ -275,6 +282,10 @@ void changePumpState(bool on) {
     digitalWrite(PUMPpin, LOW);
     pumpOn = false;
   }
+  Serial.print("Pump =");
+  Serial.println(pumpOn);
+  Serial.print("Pump manual set = ");
+  Serial.println(pumpManualSet);
 }
 
 // Convert int <val> char buffer with length <len>
@@ -314,32 +325,3 @@ int getIPComputerNumberOffset(IPAddress address, int offset)
 {
     return getIPComputerNumber(address) - offset;
 }
-
-
-
-
-
-
-#include <NewRemoteTransmitter.h>
-
-NewRemoteTransmitter transmitter(4255908178, 2, 260, 3);
-
-//bool light1, light2, light3 = false;
-
-void setup() {
-  // put your setup code here, to run once:
-  Serial.begin(9600);
-}
-
-void loop() {
-  // put your main code here, to run repeatedly:
-  for (int i = 1; i <= 3; i++) {
-    Serial.print("Unit "); Serial.print(i); Serial.println(" is nu aan");
-    transmitter.sendUnit(i, true);
-    delay(1000);
-    
-    // Set unit off
-    transmitter.sendUnit(i, false);
-  }
-}
-
