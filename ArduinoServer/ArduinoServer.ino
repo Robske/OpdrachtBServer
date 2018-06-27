@@ -20,6 +20,8 @@ dht DHT;
 #define FAN1pin 2     // Pin Fans
 #define FAN2pin 3     // Pin Fans
 #define PUMPpin 5    // Pin Waterpump
+#define LIGHTpin 8    // Pin Light
+
 bool fansOn = false;
 bool pumpOn = false;
 bool lightOn = false;
@@ -37,10 +39,8 @@ const long updateValuesInterval = 5000;                      // interval how lon
 unsigned long fansPreviousMillis = 0;                 // Cares for a count
 const long fansInterval = 10000;                      // interval how long fans must be on (milliseconds)
 
-unsigned long fansOnPreviousInterval = 0;             // Cares for a count
-const long fansOnEach = 30000;                        // interval at which to turn fans on (milliseconds)
-
 unsigned long pumpManualSetPreviousMillis = 0;                 // Cares for a count
+const long fansOnEach = 30000;                        // interval at which to turn fans on (milliseconds)
 const long pumpManualSetInterval = 30000;                      // interval how long fans must be on (milliseconds)
 
 void setup()
@@ -55,6 +55,8 @@ void setup()
    digitalWrite(FAN2pin, LOW);
    pinMode(PUMPpin, OUTPUT);
    digitalWrite(PUMPpin, LOW);
+   pinMode(LIGHTpin, OUTPUT);
+   digitalWrite(LIGHTpin, LOW);
   
    Serial.println("Server started, trying to get IP...");
 
@@ -139,26 +141,28 @@ void DoActionsNeeded() {
   unsigned long currentMillis = millis();
 
   if (currentMillis - updateValuesPreviousMillis >= updateValuesInterval) {
-    Serial.println("Values updating");
+    Serial.println("Updating all sensor values");
     updateValuesPreviousMillis = currentMillis;
     updateTempAndHumidity();
     soilhumidity = getSoilHumidity(100);
     light = getLight(100);
 
     Serial.println("New Values");
-    Serial.println(light);
-    Serial.println(airhumidity);
-    Serial.println(soilhumidity);
+    Serial.print("Light = ");
+    Serial.print(light);
+    Serial.print(" ON: ");
+    Serial.println(lightOn);
+    Serial.print("Air humidity = ");
+    Serial.print(airhumidity);
+    Serial.print(" ON: ");
+    Serial.println(fansOn);
+    Serial.print("Ground humidity = ");
+    Serial.print(soilhumidity);
+    Serial.print(" ON: ");
+    Serial.println(pumpOn);
+    Serial.print("Temp = ");
     Serial.println(temp);
-  }
-  
-  /*if (currentMillis - pumpManualSetPreviousMillis >= pumpManualSetInterval) {
-    pumpManualSetPreviousMillis  = currentMillis;
-    changePumpState(false);
-    pumpManualSet = false;
-  }*/
-
-  
+  }  
   
   if (!pumpManualSet && soilhumidity < 30 && !pumpOn) { // Check if soilhumidity is to low
     changePumpState(true);
@@ -166,12 +170,10 @@ void DoActionsNeeded() {
     changePumpState(false);
   }
 
-  if (!fanManualSet && !fansOn && currentMillis - fansOnPreviousInterval >= fansOnEach) {
-    fansOnPreviousInterval = currentMillis;
+  if (!fanManualSet && !fansOn && currentMillis - fansPreviousMillis >= fansOnEach) {
     fansPreviousMillis = currentMillis;
     changeFanState(true);
   } else if (!fanManualSet && fansOn && currentMillis - fansPreviousMillis >= fansInterval) {
-    fansOnPreviousInterval = currentMillis;
     fansPreviousMillis = currentMillis;
     changeFanState(false);
   }
@@ -223,13 +225,21 @@ void executeCommand(char cmd)
       changePumpState(false);
       break;
     case 'W':
-      changeFanState(true);
       fanManualSet = true;
+      changeFanState(true);      
       break;
     case 'w':
-      changeFanState(false);
       fanManualSet = false;
+      changeFanState(false);
       fansPreviousMillis = millis();
+      break;
+    case 'Z':
+    lightManualSet = true;
+      changeLightState(true);
+      break;
+    case 'z':
+      lightManualSet = false;
+      changeLightState(false);
       break;
     default:
       break;
@@ -254,12 +264,17 @@ int getLight(int maxval) {
 
 void changeLightState(bool on) {
   if (on) {
-    //KaKu AAN
+    digitalWrite(LIGHTpin, HIGH);
     lightOn = true;
   } else {
-    //KaKu UIT
+    digitalWrite(LIGHTpin, LOW);
     lightOn = false;
   }
+
+  Serial.print("Light =");
+  Serial.println(lightOn);
+  Serial.print("Light manual set = ");
+  Serial.println(lightManualSet);
 }
 
 void changeFanState(bool on) {
@@ -272,6 +287,11 @@ void changeFanState(bool on) {
     digitalWrite(FAN2pin, LOW);
     fansOn = false;
   }
+
+  Serial.print("Fan = ");
+  Serial.println(fansOn);
+  Serial.print("Fans manual set = ");
+  Serial.println(fanManualSet);
 }
 
 void changePumpState(bool on) {
@@ -282,6 +302,7 @@ void changePumpState(bool on) {
     digitalWrite(PUMPpin, LOW);
     pumpOn = false;
   }
+  
   Serial.print("Pump =");
   Serial.println(pumpOn);
   Serial.print("Pump manual set = ");
