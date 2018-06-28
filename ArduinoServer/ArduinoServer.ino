@@ -36,11 +36,7 @@ int airTime = 3600;                                  // each airTime in seconds 
 unsigned long updateValuesPreviousMillis = 0;                 // Cares for a count
 const long updateValuesInterval = 5000;                      // interval how long fans must be on (milliseconds)
 
-unsigned long fansPreviousMillis = 0;                 // Cares for a count
-const long fansInterval = 10000;                      // interval how long fans must be on (milliseconds)
-
 unsigned long pumpManualSetPreviousMillis = 0;                 // Cares for a count
-const long fansOnEach = 30000;                        // interval at which to turn fans on (milliseconds)
 const long pumpManualSetInterval = 30000;                      // interval how long fans must be on (milliseconds)
 
 void setup()
@@ -177,17 +173,15 @@ void DoActionsNeeded() {
     changePumpState(false);
   }
 
-  if (!fanManualSet && !fansOn && currentMillis - fansPreviousMillis >= fansOnEach) {
-    fansPreviousMillis = currentMillis;
+  if (!fanManualSet && !fansOn && airhumidity > 75) {
     changeFanState(true);
-  } else if (!fanManualSet && fansOn && currentMillis - fansPreviousMillis >= fansInterval) {
-    fansPreviousMillis = currentMillis;
+  } else if (!fanManualSet && fansOn && airhumidity < 50) {
     changeFanState(false);
   }
   
   if (!lightManualSet && light < 30 && !lightOn) { // Check if light is needed
     changeLightState(true);
-  } else if (!lightManualSet && light > 50 && lightOn) {
+  } else if (!lightManualSet && light > 30 && lightOn) {
     changeLightState(false);
   }
 }
@@ -238,7 +232,6 @@ void executeCommand(char cmd)
     case 'w':
       fanManualSet = false;
       changeFanState(false);
-      fansPreviousMillis = millis();
       break;
     case 'Z':
     lightManualSet = true;
