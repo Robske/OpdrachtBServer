@@ -67,7 +67,7 @@ void setup()
       Serial.println("Retry in 10 seconds");
       delay(10000);
       
-      for (int i = 0; i < 100; i++) {
+      for (int i = 0; i < 10; i++) {
         if (Ethernet.begin(mac) != 0) {
           connected = true;
           return;
