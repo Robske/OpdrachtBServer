@@ -173,9 +173,9 @@ void DoActionsNeeded() {
     changePumpState(false);
   }
 
-  if (!fanManualSet && !fansOn && airhumidity > 75) {
+  if (!fanManualSet && !fansOn && airhumidity > 85) {
     changeFanState(true);
-  } else if (!fanManualSet && fansOn && airhumidity < 50) {
+  } else if (!fanManualSet && fansOn && airhumidity < 75) {
     changeFanState(false);
   }
   
