@@ -11,15 +11,15 @@ int ethPort = 3300;                                  // Take a free port (check 
 EthernetServer server(ethPort);                      // EthernetServer instance (listening on port <ethPort>).
 bool connected = false;                              // Used for retrying DHCP
 
-#define ledpin 8      // Led shows if client connected
-
 dht DHT;
-#define DHT11pin 7    // Pin Air Humidity and Temperature Sensor
+
 #define LDRpin A0     // Pin Light Sensor
 #define SOILpin A1    // Pin Soil Humidity Sensor
 #define FAN1pin 2     // Pin Fans
 #define FAN2pin 3     // Pin Fans
-#define PUMPpin 5    // Pin Waterpump
+#define PUMPpin 5     // Pin Waterpump
+#define LEDpin 6      // Led shows if client connected
+#define DHT11pin 7    // Pin Air Humidity and Temperature Sensor
 #define LIGHTpin 8    // Pin Light
 
 bool fansOn = false;
@@ -47,8 +47,8 @@ void setup()
 {  
    Serial.begin(9600);
    
-   pinMode(ledpin, OUTPUT);
-   digitalWrite(ledpin, LOW);
+   pinMode(LEDpin, OUTPUT);
+   digitalWrite(LEDpin, LOW);
    pinMode(FAN1pin, OUTPUT);
    digitalWrite(FAN1pin, LOW);
    pinMode(FAN2pin, OUTPUT);
@@ -72,7 +72,7 @@ void setup()
           connected = true;
           return;
         } else {
-          Serial.print("Try"); Serial.print(i); Serial.println(" failed");
+          Serial.print("Try "); Serial.print(i); Serial.println(" failed");
           Serial.println("Retry in 10 seconds");
           delay(10000);
         }
@@ -114,7 +114,7 @@ void loop()
    }
 
    Serial.println("Application connected");
-   digitalWrite(ledpin, HIGH);
+   digitalWrite(LEDpin, HIGH);
    
    // Do what needs to be done while the socket is connected.
    while (ethernetClient.connected())
@@ -132,7 +132,14 @@ void loop()
       } 
    }
    
-   digitalWrite(ledpin, LOW);
+   digitalWrite(LEDpin, LOW);
+   changeLightState(false);
+   changeFanState(false);
+   changePumpState(false);
+
+   lightManualSet = false;
+   pumpManualSet = false;
+   fanManualSet = false;
    Serial.println("Application disonnected");
 }
 
@@ -178,9 +185,9 @@ void DoActionsNeeded() {
     changeFanState(false);
   }
   
-  if (!lightManualSet && light < 30 && !light) { // Check if light is needed
+  if (!lightManualSet && light < 30 && !lightOn) { // Check if light is needed
     changeLightState(true);
-  } else if (!lightManualSet && light > 50 && light) {
+  } else if (!lightManualSet && light > 50 && lightOn) {
     changeLightState(false);
   }
 }
@@ -251,7 +258,7 @@ int updateTempAndHumidity()
 {
   int chk = DHT.read11(DHT11pin);
   temp = DHT.temperature;
-  soilhumidity = DHT.humidity;
+  airhumidity = DHT.humidity;
 }
 
 int getSoilHumidity(int maxval) { //FUNCTION STILL HAS TO BE MADE
@@ -270,11 +277,6 @@ void changeLightState(bool on) {
     digitalWrite(LIGHTpin, LOW);
     lightOn = false;
   }
-
-  Serial.print("Light =");
-  Serial.println(lightOn);
-  Serial.print("Light manual set = ");
-  Serial.println(lightManualSet);
 }
 
 void changeFanState(bool on) {
@@ -302,11 +304,6 @@ void changePumpState(bool on) {
     digitalWrite(PUMPpin, LOW);
     pumpOn = false;
   }
-  
-  Serial.print("Pump =");
-  Serial.println(pumpOn);
-  Serial.print("Pump manual set = ");
-  Serial.println(pumpManualSet);
 }
 
 // Convert int <val> char buffer with length <len>
